@@ -1,10 +1,16 @@
+/**
+ * Voice Indicator Component (Minimal UI)
+ * 
+ * Shows only 3 states with subtle visual changes.
+ * No heavy animations to minimize CPU usage.
+ */
 import { cn } from '@/lib/utils';
 
 type VoiceState = 'idle' | 'listening' | 'thinking' | 'speaking';
 
 interface VoiceIndicatorProps {
   state: VoiceState;
-  silenceProgress?: number; // 0-1 progress toward pause threshold
+  silenceProgress?: number;
   className?: string;
 }
 
@@ -12,26 +18,26 @@ export function VoiceIndicator({ state, silenceProgress = 0, className }: VoiceI
   const stateConfig = {
     idle: {
       label: 'Tap to start',
-      ringClass: 'border-muted-foreground/30',
-      glowClass: '',
+      borderClass: 'border-muted-foreground/30',
+      bgClass: 'bg-muted/20',
       dotClass: 'bg-muted-foreground/50',
     },
     listening: {
-      label: 'Listening...',
-      ringClass: 'border-primary',
-      glowClass: 'glow-primary',
+      label: 'Listening',
+      borderClass: 'border-primary',
+      bgClass: 'bg-primary/10',
       dotClass: 'bg-primary',
     },
     thinking: {
       label: 'Thinking...',
-      ringClass: 'border-muted-foreground',
-      glowClass: 'glow-muted',
+      borderClass: 'border-muted-foreground',
+      bgClass: 'bg-muted/30',
       dotClass: 'bg-muted-foreground',
     },
     speaking: {
       label: 'AI Speaking',
-      ringClass: 'border-accent',
-      glowClass: 'glow-accent',
+      borderClass: 'border-accent',
+      bgClass: 'bg-accent/10',
       dotClass: 'bg-accent',
     },
   };
@@ -39,133 +45,59 @@ export function VoiceIndicator({ state, silenceProgress = 0, className }: VoiceI
   const config = stateConfig[state];
 
   return (
-    <div className={cn('flex flex-col items-center gap-6', className)}>
-      {/* Main indicator orb */}
+    <div className={cn('flex flex-col items-center gap-4', className)}>
+      {/* Main indicator orb - simplified */}
       <div className="relative">
-        {/* Outer glow rings */}
-        {state !== 'idle' && (
-          <>
-            <div
-              className={cn(
-                'absolute inset-0 rounded-full border-2 animate-ripple',
-                config.ringClass,
-                'opacity-30'
-              )}
-              style={{ animationDelay: '0s' }}
-            />
-            <div
-              className={cn(
-                'absolute inset-0 rounded-full border-2 animate-ripple',
-                config.ringClass,
-                'opacity-20'
-              )}
-              style={{ animationDelay: '0.5s' }}
-            />
-            <div
-              className={cn(
-                'absolute inset-0 rounded-full border-2 animate-ripple',
-                config.ringClass,
-                'opacity-10'
-              )}
-              style={{ animationDelay: '1s' }}
-            />
-          </>
-        )}
-
-        {/* Main orb */}
         <div
           className={cn(
-            'relative w-32 h-32 rounded-full border-2 flex items-center justify-center',
-            'transition-all duration-500',
-            config.ringClass,
-            config.glowClass,
-            state !== 'idle' && 'animate-pulse-glow'
+            'w-24 h-24 rounded-full border-2 flex items-center justify-center',
+            'transition-colors duration-300',
+            config.borderClass,
+            config.bgClass
           )}
         >
-          {/* Inner content based on state */}
-          {state === 'speaking' ? (
-            <WaveformBars />
-          ) : state === 'thinking' ? (
-            <ThinkingDots />
-          ) : (
-            <div
-              className={cn(
-                'w-4 h-4 rounded-full transition-all duration-300',
-                config.dotClass,
-                state === 'listening' && 'w-6 h-6 animate-pulse'
-              )}
-            />
-          )}
+          {/* Simple inner indicator */}
+          <div
+            className={cn(
+              'w-4 h-4 rounded-full transition-all duration-300',
+              config.dotClass,
+              state === 'listening' && 'w-5 h-5',
+              state === 'thinking' && 'opacity-60',
+              state === 'speaking' && 'w-6 h-6'
+            )}
+          />
         </div>
 
-        {/* Silence progress ring (only when listening) */}
+        {/* Minimal silence progress ring */}
         {state === 'listening' && silenceProgress > 0 && (
           <svg
-            className="absolute inset-0 w-32 h-32 -rotate-90"
-            viewBox="0 0 128 128"
+            className="absolute inset-0 w-24 h-24 -rotate-90"
+            viewBox="0 0 96 96"
           >
             <circle
-              cx="64"
-              cy="64"
-              r="62"
-              fill="none"
-              stroke="hsl(var(--muted-foreground) / 0.2)"
-              strokeWidth="2"
-            />
-            <circle
-              cx="64"
-              cy="64"
-              r="62"
+              cx="48"
+              cy="48"
+              r="46"
               fill="none"
               stroke="hsl(var(--accent))"
               strokeWidth="2"
-              strokeDasharray={`${silenceProgress * 389.6} 389.6`}
+              strokeDasharray={`${silenceProgress * 289} 289`}
               className="transition-all duration-100"
+              strokeLinecap="round"
             />
           </svg>
         )}
       </div>
 
-      {/* State label */}
+      {/* State label - simple text */}
       <span
         className={cn(
-          'text-sm font-medium tracking-wide uppercase',
+          'text-xs font-medium tracking-wide uppercase',
           state === 'idle' ? 'text-muted-foreground' : 'text-foreground'
         )}
       >
         {config.label}
       </span>
-    </div>
-  );
-}
-
-function WaveformBars() {
-  return (
-    <div className="flex items-center gap-1 h-8">
-      {[0, 0.1, 0.2, 0.15, 0.25].map((delay, i) => (
-        <div
-          key={i}
-          className="w-1.5 bg-accent rounded-full animate-wave"
-          style={{
-            height: '100%',
-            animationDelay: `${delay}s`,
-          }}
-        />
-      ))}
-    </div>
-  );
-}
-
-function ThinkingDots() {
-  return (
-    <div className="flex items-center gap-2">
-      {[0, 0.2, 0.4].map((delay, i) => (
-        <div
-          key={i}
-          className="w-2 h-2 bg-muted-foreground rounded-full animate-bounce"
-          style={{ animationDelay: `${delay}s` }}
-        />
-      ))}
     </div>
   );
 }
