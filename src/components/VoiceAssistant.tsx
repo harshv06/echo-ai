@@ -1,18 +1,30 @@
+/**
+ * Voice Assistant Component (Optimized MVP)
+ * 
+ * Core changes implemented:
+ * 1. Streaming audio playback with chunk queuing
+ * 2. Smart user speech handling (no auto-interrupt)
+ * 3. Manual stop control button
+ * 4. Pause detection with cooldown (cost saving)
+ * 5. Context minimization (last 4 turns, no fillers)
+ * 6. Single AudioContext, binary WebSocket support
+ * 7. Minimal UI with 3 states
+ */
 import { useState, useCallback, useEffect } from 'react';
 import { useSpeechRecognition } from '@/hooks/useSpeechRecognition';
 import { useSilenceDetection } from '@/hooks/useSilenceDetection';
 import { useWebSocket } from '@/hooks/useWebSocket';
-import { useAudioPlayback } from '@/hooks/useAudioPlayback';
+import { useStreamingAudio, resumeAudioContext } from '@/hooks/useStreamingAudio';
 import { VoiceIndicator } from './VoiceIndicator';
 import { TranscriptDisplay } from './TranscriptDisplay';
 import { StatusBar } from './StatusBar';
+import { StopButton } from './StopButton';
 import { cn } from '@/lib/utils';
 
-// WebSocket URL - configure this for your backend
+// Configuration constants
 const WS_URL = import.meta.env.VITE_WS_URL || 'ws://localhost:8080/ws';
-
-// Silence threshold in ms
-const SILENCE_THRESHOLD = 10000;
+const SILENCE_THRESHOLD = 5000;   // 5 seconds (reduced for faster response)
+const COOLDOWN_PERIOD = 30000;    // 30 seconds between suggestions
 
 type AppState = 'idle' | 'listening' | 'thinking' | 'speaking';
 
@@ -32,37 +44,49 @@ export function VoiceAssistant() {
     lastSpokenAt,
   } = useSpeechRecognition();
 
-  // Audio playback hook
+  // Streaming audio playback hook
   const {
     isPlaying: isAISpeaking,
-    play: playAudio,
+    queueChunk,
     stop: stopAudio,
-  } = useAudioPlayback({
+    finishStream,
+  } = useStreamingAudio({
     volume: 0.7,
     onPlaybackStart: () => setAppState('speaking'),
     onPlaybackEnd: () => setAppState(isListening ? 'listening' : 'idle'),
   });
 
-  // Handle voice suggestion from backend
-  const handleVoiceSuggestion = useCallback(
-    (audioUrl: string) => {
-      // Don't play if user is actively speaking
-      if (lastSpokenAt && Date.now() - lastSpokenAt < 1000) {
-        console.log('[VoiceAssistant] Skipping audio - user is speaking');
-        return;
-      }
-      playAudio(audioUrl);
-    },
-    [lastSpokenAt, playAudio]
-  );
+  // Handle incoming audio chunks
+  const handleAudioChunk = useCallback((audioData: ArrayBuffer) => {
+    queueChunk(audioData);
+  }, [queueChunk]);
 
-  // WebSocket hook
+  // Handle stream end
+  const handleStreamEnd = useCallback(() => {
+    finishStream();
+  }, [finishStream]);
+
+  // Handle legacy voice suggestion (full URL)
+  const handleVoiceSuggestion = useCallback((audioUrl: string) => {
+    // Fetch and queue as single chunk
+    fetch(audioUrl)
+      .then(res => res.arrayBuffer())
+      .then(buffer => {
+        queueChunk(buffer);
+        finishStream();
+      })
+      .catch(e => console.error('[VoiceAssistant] Failed to fetch audio:', e));
+  }, [queueChunk, finishStream]);
+
+  // WebSocket hook with streaming support
   const {
     isConnected,
     error: wsError,
     sendPauseDetected,
   } = useWebSocket({
     url: WS_URL,
+    onAudioChunk: handleAudioChunk,
+    onStreamEnd: handleStreamEnd,
     onVoiceSuggestion: handleVoiceSuggestion,
     autoConnect: true,
   });
@@ -74,52 +98,65 @@ export function VoiceAssistant() {
       return;
     }
 
+    // Don't send if AI is currently speaking
+    if (isAISpeaking) {
+      console.log('[VoiceAssistant] Skipping pause - AI is speaking');
+      return;
+    }
+
     setAppState('thinking');
 
-    // Send conversation snapshot to backend
+    // Send minimal conversation snapshot to backend
     sendPauseDetected({
       lastTurns: recentTurns,
       lastSpokenAt,
       detectedLanguage,
     });
-  }, [isConnected, sendPauseDetected, recentTurns, lastSpokenAt, detectedLanguage]);
+  }, [isConnected, isAISpeaking, sendPauseDetected, recentTurns, lastSpokenAt, detectedLanguage]);
 
-  // Silence detection hook
-  const { silenceDuration, isPaused, resetPause } = useSilenceDetection({
+  // Silence detection hook with cooldown
+  const { 
+    silenceDuration, 
+    resetPause,
+    updateLastSuggestionTime,
+    isInCooldown,
+  } = useSilenceDetection({
     lastSpokenAt,
     isListening,
     silenceThreshold: SILENCE_THRESHOLD,
+    cooldownPeriod: COOLDOWN_PERIOD,
     onPauseDetected: handlePauseDetected,
   });
 
   // Calculate silence progress (0-1)
-  const silenceProgress = Math.min(silenceDuration / SILENCE_THRESHOLD, 1);
+  const silenceProgress = isInCooldown ? 0 : Math.min(silenceDuration / SILENCE_THRESHOLD, 1);
 
-  // Stop AI audio if user starts speaking
+  // Update cooldown when AI finishes speaking
   useEffect(() => {
-    if (isAISpeaking && lastSpokenAt) {
-      const timeSinceSpoke = Date.now() - lastSpokenAt;
-      if (timeSinceSpoke < 500) {
-        console.log('[VoiceAssistant] User interrupted - stopping audio');
-        stopAudio();
-        resetPause();
-      }
+    if (!isAISpeaking && appState === 'speaking') {
+      updateLastSuggestionTime();
     }
-  }, [lastSpokenAt, isAISpeaking, stopAudio, resetPause]);
+  }, [isAISpeaking, appState, updateLastSuggestionTime]);
 
   // Update app state based on listening status
   useEffect(() => {
     if (!isAISpeaking) {
-      if (isListening) {
-        setAppState('listening');
-      } else {
-        setAppState('idle');
-      }
+      setAppState(isListening ? 'listening' : 'idle');
     }
   }, [isListening, isAISpeaking]);
 
-  // Toggle listening
-  const toggleListening = useCallback(() => {
+  // Manual stop handler
+  const handleStopAudio = useCallback(() => {
+    stopAudio();
+    resetPause();
+    console.log('[VoiceAssistant] Manual stop triggered');
+  }, [stopAudio, resetPause]);
+
+  // Toggle listening (also resumes AudioContext)
+  const toggleListening = useCallback(async () => {
+    // Resume AudioContext on user interaction
+    await resumeAudioContext();
+
     if (isListening) {
       stopListening();
       stopAudio();
@@ -131,11 +168,11 @@ export function VoiceAssistant() {
   // Combined error
   const error = speechError || wsError;
 
-  // Check browser support
+  // Browser support check
   if (!isSupported) {
     return (
       <div className="min-h-screen bg-background flex items-center justify-center p-6">
-        <div className="glass-card p-8 text-center max-w-md">
+        <div className="p-8 text-center max-w-md border border-border rounded-lg">
           <h2 className="text-xl font-semibold text-foreground mb-4">
             Browser Not Supported
           </h2>
@@ -150,15 +187,12 @@ export function VoiceAssistant() {
   return (
     <div className="min-h-screen bg-background flex flex-col">
       {/* Main content */}
-      <div className="flex-1 flex flex-col items-center justify-center p-6 gap-8">
-        {/* Header */}
+      <div className="flex-1 flex flex-col items-center justify-center p-6 gap-6">
+        {/* Header - minimal */}
         <div className="text-center">
-          <h1 className="text-2xl font-light tracking-wide text-foreground mb-2">
+          <h1 className="text-xl font-light tracking-wide text-foreground">
             Voice Assistant
           </h1>
-          <p className="text-sm text-muted-foreground">
-            Speak naturally • I'll listen and respond
-          </p>
         </div>
 
         {/* Voice indicator - clickable to toggle */}
@@ -166,7 +200,7 @@ export function VoiceAssistant() {
           onClick={toggleListening}
           className={cn(
             'focus:outline-none focus:ring-2 focus:ring-primary/50 rounded-full',
-            'transition-transform hover:scale-105 active:scale-95'
+            'transition-transform active:scale-95'
           )}
           aria-label={isListening ? 'Stop listening' : 'Start listening'}
         >
@@ -176,6 +210,12 @@ export function VoiceAssistant() {
           />
         </button>
 
+        {/* Stop button - only visible when AI is speaking */}
+        <StopButton
+          onClick={handleStopAudio}
+          visible={isAISpeaking}
+        />
+
         {/* Transcript display */}
         <TranscriptDisplay
           recentTurns={recentTurns}
@@ -183,12 +223,12 @@ export function VoiceAssistant() {
           className="w-full max-w-lg"
         />
 
-        {/* Instructions */}
-        <p className="text-xs text-muted-foreground/60 text-center max-w-sm">
-          {appState === 'idle' && 'Click the orb to start listening'}
-          {appState === 'listening' && 'Speak naturally. I\'ll suggest responses after 10 seconds of silence.'}
-          {appState === 'thinking' && 'Processing your conversation...'}
-          {appState === 'speaking' && 'Speak to interrupt at any time'}
+        {/* Minimal instructions */}
+        <p className="text-xs text-muted-foreground/60 text-center max-w-xs">
+          {appState === 'idle' && 'Tap to start'}
+          {appState === 'listening' && (isInCooldown ? 'Listening... (cooldown active)' : 'Listening...')}
+          {appState === 'thinking' && 'Processing...'}
+          {appState === 'speaking' && 'AI responding'}
         </p>
       </div>
 
