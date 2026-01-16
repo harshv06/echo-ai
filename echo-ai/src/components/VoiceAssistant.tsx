@@ -10,7 +10,7 @@
  * 6. Single AudioContext, binary WebSocket support
  * 7. Minimal UI with 3 states
  */
-import { useState, useCallback, useEffect, useRef } from 'react';
+import { useState, useCallback, useEffect } from 'react';
 import { useSpeechRecognition } from '@/hooks/useSpeechRecognition';
 import { useSilenceDetection } from '@/hooks/useSilenceDetection';
 import { useWebSocket } from '@/hooks/useWebSocket';
@@ -22,16 +22,14 @@ import { StopButton } from './StopButton';
 import { cn } from '@/lib/utils';
 
 // Configuration constants
-const WS_URL = import.meta.env.VITE_WS_URL || 'ws://localhost:8000/ws';
-const SILENCE_THRESHOLD = 7000;   // 7 seconds (aligned with backend trigger)
+const WS_URL = import.meta.env.VITE_WS_URL || 'ws://localhost:8080/ws';
+const SILENCE_THRESHOLD = 5000;   // 5 seconds (reduced for faster response)
 const COOLDOWN_PERIOD = 30000;    // 30 seconds between suggestions
 
 type AppState = 'idle' | 'listening' | 'thinking' | 'speaking';
 
 export function VoiceAssistant() {
   const [appState, setAppState] = useState<AppState>('idle');
-  const shouldResumeListeningRef = useRef(false);
-  const silenceDurationRef = useRef(0);
 
   // Speech recognition hook
   const {
@@ -55,20 +53,8 @@ export function VoiceAssistant() {
     finishStream,
   } = useStreamingAudio({
     volume: 0.7,
-    onPlaybackStart: () => {
-      setAppState('speaking');
-      if (isListening) {
-        shouldResumeListeningRef.current = true;
-        stopListening();
-      }
-    },
-    onPlaybackEnd: () => {
-      setAppState(isListening ? 'listening' : 'idle');
-      if (shouldResumeListeningRef.current) {
-        shouldResumeListeningRef.current = false;
-        startListening();
-      }
-    },
+    onPlaybackStart: () => setAppState('speaking'),
+    onPlaybackEnd: () => setAppState(isListening ? 'listening' : 'idle'),
   });
 
   // Handle incoming audio chunks
@@ -121,30 +107,13 @@ export function VoiceAssistant() {
 
     setAppState('thinking');
 
-    const silenceSeconds = Math.max(0, silenceDurationRef.current / 1000);
-    const baseConfidence = Math.max(0, 1 - silenceSeconds / 15);
-    const turnBoost = Math.min(recentTurns.length / 6, 0.2);
-    const confidenceScore = Math.min(1, Math.max(0, baseConfidence + turnBoost));
-
-    const normalizedLanguage = detectedLanguage.startsWith('hi')
-      ? 'hindi'
-      : 'english';
-
     // Send minimal conversation snapshot to backend
     sendPauseDetected({
       lastTurns: recentTurns,
-      lastSpokenAt: lastSpokenAt ? Math.floor(lastSpokenAt / 1000) : null,
-      detectedLanguage: normalizedLanguage,
-      confidenceScore,
+      lastSpokenAt,
+      detectedLanguage,
     });
-  }, [
-    isConnected,
-    isAISpeaking,
-    sendPauseDetected,
-    recentTurns,
-    lastSpokenAt,
-    detectedLanguage,
-  ]);
+  }, [isConnected, isAISpeaking, sendPauseDetected, recentTurns, lastSpokenAt, detectedLanguage]);
 
   // Silence detection hook with cooldown
   const {
@@ -159,10 +128,6 @@ export function VoiceAssistant() {
     cooldownPeriod: COOLDOWN_PERIOD,
     onPauseDetected: handlePauseDetected,
   });
-
-  useEffect(() => {
-    silenceDurationRef.current = silenceDuration;
-  }, [silenceDuration]);
 
   // Calculate silence progress (0-1)
   const silenceProgress = isInCooldown ? 0 : Math.min(silenceDuration / SILENCE_THRESHOLD, 1);
