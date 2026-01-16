@@ -23,6 +23,7 @@ interface ConversationSnapshot {
   detectedLanguage: string;
   userContext?: string;
   dateContext?: string;
+  boundaryGuidelines?: string;
 }
 
 interface WebSocketMessage {
@@ -217,6 +218,7 @@ export function useWebSocket({
         detectedLanguage: snapshot.detectedLanguage,
         userContext: snapshot.userContext,
         dateContext: snapshot.dateContext,
+        boundaryGuidelines: snapshot.boundaryGuidelines,
       };
 
       const message: WebSocketMessage = {

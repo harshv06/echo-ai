@@ -160,4 +160,5 @@ def build_llm_context(
         ),
         "user_context": snapshot.get("userContext", ""),
         "date_context": snapshot.get("dateContext", ""),
+        "boundary_guidelines": snapshot.get("boundaryGuidelines", ""),
     }

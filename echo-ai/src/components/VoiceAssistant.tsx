@@ -22,7 +22,7 @@ import { StopButton } from './StopButton';
 import { cn } from '@/lib/utils';
 
 // Configuration constants
-const WS_URL = import.meta.env.VITE_WS_URL || 'ws://localhost:8009/ws';
+const WS_URL = import.meta.env.VITE_WS_URL || 'ws://localhost:8013/ws';
 const SILENCE_THRESHOLD = 4000;   // 5 seconds (reduced for faster response)
 const COOLDOWN_PERIOD = 10000;    // 10 seconds between suggestions
 
@@ -33,6 +33,8 @@ export function VoiceAssistant() {
   const [userContext, setUserContext] = useState('');
   const [dateContext, setDateContext] = useState('');
   const [isContextVisible, setIsContextVisible] = useState(false);
+  const [boundaryGuidelines, setBoundaryGuidelines] = useState('');
+  const [isAnalyzing, setIsAnalyzing] = useState(false);
 
   // Speech recognition hook
   const {
@@ -170,8 +172,9 @@ export function VoiceAssistant() {
       detectedLanguage,
       userContext,
       dateContext,
+      boundaryGuidelines,
     });
-  }, [isConnected, isAISpeaking, sendPauseDetected, recentTurns, lastSpokenAt, detectedLanguage, userContext, dateContext]);
+  }, [isConnected, isAISpeaking, sendPauseDetected, recentTurns, lastSpokenAt, detectedLanguage, userContext, dateContext, boundaryGuidelines]);
 
   // Silence detection hook with cooldown
   const {
@@ -285,6 +288,42 @@ export function VoiceAssistant() {
                   onChange={(e) => setDateContext(e.target.value)}
                 />
               </div>
+              <div className="flex justify-end pt-2">
+                <button
+                  onClick={async () => {
+                    setIsAnalyzing(true);
+                    setBoundaryGuidelines('');
+                    try {
+                      // Extract HTTP URL from WebSocket URL (replace ws:// with http:// and port if needed)
+                      // Assuming typical setup: ws://host:port/ws -> http://host:port/analyze-boundaries
+                      const httpUrl = WS_URL.replace('ws://', 'http://').replace('/ws', '/analyze-boundaries');
+
+                      const res = await fetch(httpUrl, {
+                        method: 'POST',
+                        headers: { 'Content-Type': 'application/json' },
+                        body: JSON.stringify({ user_context: userContext, date_context: dateContext })
+                      });
+                      const data = await res.json();
+                      setBoundaryGuidelines(data.result);
+                    } catch (e) {
+                      console.error("Analysis failed", e);
+                      setBoundaryGuidelines("Failed to analyze boundaries.");
+                    } finally {
+                      setIsAnalyzing(false);
+                    }
+                  }}
+                  disabled={isAnalyzing || (!userContext && !dateContext)}
+                  className="text-xs bg-black text-white px-3 py-1.5 rounded-md hover:bg-gray-800 disabled:opacity-50 disabled:cursor-not-allowed transition-colors"
+                >
+                  {isAnalyzing ? 'Analyzing...' : 'Find Boundaries'}
+                </button>
+              </div>
+
+              {boundaryGuidelines && (
+                <div className="mt-2 p-3 bg-yellow-50/50 border border-yellow-200 rounded text-xs text-gray-700 whitespace-pre-wrap max-h-40 overflow-y-auto w-full">
+                  {boundaryGuidelines}
+                </div>
+              )}
             </div>
           )}
         </div>
@@ -358,6 +397,24 @@ export function VoiceAssistant() {
           error={error}
           className="max-w-lg mx-auto"
         />
+        {/* Support Options */}
+        <div className="mt-auto pt-8 pb-4 w-full max-w-md grid grid-cols-2 gap-4">
+          <div className="flex flex-col items-center text-center p-3 rounded-xl bg-primary/5 border border-primary/10 hover:bg-primary/10 transition-colors cursor-pointer group">
+            <div className="w-10 h-10 rounded-full bg-primary/10 flex items-center justify-center mb-2 group-hover:scale-110 transition-transform">
+              <svg xmlns="http://www.w3.org/2000/svg" width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" className="text-primary"><path d="M12 8V4H8" /><rect width="16" height="12" x="4" y="8" rx="2" /><path d="M2 14h2" /><path d="M20 14h2" /><path d="M15 13v2" /><path d="M9 13v2" /></svg>
+            </div>
+            <p className="text-[10px] font-medium text-foreground mb-1">Feeling Nervous?</p>
+            <p className="text-[9px] text-muted-foreground leading-tight">Talk to our AI bot for honest feedback preparation</p>
+          </div>
+
+          <div className="flex flex-col items-center text-center p-3 rounded-xl bg-secondary/5 border border-secondary/10 hover:bg-secondary/10 transition-colors cursor-pointer group">
+            <div className="w-10 h-10 rounded-full bg-secondary flex items-center justify-center mb-2 group-hover:scale-110 transition-transform">
+              <svg xmlns="http://www.w3.org/2000/svg" width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" className="text-white"><path d="M22 16.92v3a2 2 0 0 1-2.18 2 19.79 19.79 0 0 1-8.63-3.07 19.5 19.5 0 0 1-6-6 19.79 19.79 0 0 1-3.07-8.67A2 2 0 0 1 4.11 2h3a2 2 0 0 1 2 1.72 12.84 12.84 0 0 0 .7 2.81 2 2 0 0 1-.45 2.11L8.09 9.91a16 16 0 0 0 6 6l1.27-1.27a2 2 0 0 1 2.11-.45 12.84 12.84 0 0 0 2.81.7A2 2 0 0 1 22 16.92z" /></svg>
+            </div>
+            <p className="text-[10px] font-medium text-foreground mb-1">Physical Feedback?</p>
+            <p className="text-[9px] text-muted-foreground leading-tight">Call our rental-executive for real-world prep</p>
+          </div>
+        </div>
       </div>
     </div>
   );
