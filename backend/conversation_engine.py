@@ -161,5 +161,4 @@ def build_llm_context(
         "current_topics": analysis.get("recent_topics") or [],
         "dominant_speaker": analysis.get("dominant_speaker"),
         "confidence_score": analysis.get("confidence_score"),
-        "recent_suggestions": state.get("recent_suggestions") or [],
     }

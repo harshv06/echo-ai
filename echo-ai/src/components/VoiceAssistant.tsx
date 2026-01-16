@@ -24,7 +24,7 @@ import { cn } from '@/lib/utils';
 // Configuration constants
 const WS_URL = import.meta.env.VITE_WS_URL || 'ws://localhost:8000/ws';
 const SILENCE_THRESHOLD = 7000;   // 7 seconds (aligned with backend trigger)
-const COOLDOWN_PERIOD = 30000;    // 30 seconds between suggestions
+const COOLDOWN_PERIOD = 7000;    // 7 seconds cooldown after AI speaks
 
 type AppState = 'idle' | 'listening' | 'thinking' | 'speaking';
 
@@ -64,7 +64,7 @@ export function VoiceAssistant() {
 
     stopSpeech();
     const utterance = new SpeechSynthesisUtterance(text);
-    utterance.rate = 1.0;
+    utterance.rate = 1.5;
     utteranceRef.current = utterance;
 
     utterance.onstart = () => {
@@ -167,8 +167,9 @@ export function VoiceAssistant() {
   useEffect(() => {
     if (!isSpeakingRef.current && appState === 'speaking') {
       updateLastSuggestionTime();
+      resetPause();
     }
-  }, [appState, updateLastSuggestionTime]);
+  }, [appState, updateLastSuggestionTime, resetPause]);
 
   // Update app state based on listening status
   useEffect(() => {

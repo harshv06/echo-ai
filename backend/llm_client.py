@@ -29,7 +29,6 @@ Guidelines:
 - Spoken, friendly, non-judgmental tone
 - Match detected language style (english, hindi, hinglish)
 - Avoid repeating recent topics
-- Do not repeat any recent suggestions
 - Prefer a light callback to past topics when helpful 
 - If flirting, keep it playful , hot and raunchy
 - Avoid sensitive or personal advice
@@ -48,7 +47,6 @@ dominant_speaker: {dominant_speaker}
 recent_topics: {recent_topics}
 current_topics: {current_topics}
 confidence_score: {confidence_score}
-recent_suggestions: {recent_suggestions}
 """
 
 
@@ -73,7 +71,6 @@ async def generate_suggestion(context: Dict[str, Any]) -> str:
         recent_topics=context.get("recent_topics"),
         current_topics=context.get("current_topics"),
         confidence_score=context.get("confidence_score"),
-        recent_suggestions=context.get("recent_suggestions"),
     )
 
     if _is_gemini_api(api_url):

@@ -46,6 +46,9 @@ export function useSilenceDetection({
 
   // Update last suggestion time (called when AI finishes speaking)
   const updateLastSuggestionTime = useCallback(() => {
+    if (cooldownPeriod <= 0) {
+      return;
+    }
     lastSuggestionTimeRef.current = Date.now();
     setIsInCooldown(true);
     console.log('[SilenceDetection] Cooldown started');
@@ -84,7 +87,7 @@ export function useSilenceDetection({
       const now = Date.now();
 
       // Check cooldown status
-      if (lastSuggestionTimeRef.current) {
+      if (cooldownPeriod > 0 && lastSuggestionTimeRef.current) {
         const timeSinceSuggestion = now - lastSuggestionTimeRef.current;
         if (timeSinceSuggestion < cooldownPeriod) {
           setIsInCooldown(true);
@@ -100,7 +103,7 @@ export function useSilenceDetection({
         // Check if we've reached the pause threshold
         if (silence >= silenceThreshold && !pauseTriggeredRef.current) {
           // Check cooldown - don't trigger if in cooldown
-          if (lastSuggestionTimeRef.current) {
+          if (cooldownPeriod > 0 && lastSuggestionTimeRef.current) {
             const timeSinceSuggestion = now - lastSuggestionTimeRef.current;
             if (timeSinceSuggestion < cooldownPeriod) {
               console.log('[SilenceDetection] In cooldown, skipping pause trigger');
