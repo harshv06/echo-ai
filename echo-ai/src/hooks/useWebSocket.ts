@@ -21,14 +21,12 @@ interface ConversationSnapshot {
   lastTurns: ConversationTurn[];
   lastSpokenAt: number | null;
   detectedLanguage: string;
-  confidenceScore?: number;
 }
 
 interface WebSocketMessage {
   type: string;
   conversation_snapshot?: ConversationSnapshot;
   audio_url?: string;
-  audio_stream?: string;
   audio_chunk?: string; // base64 encoded audio chunk
   [key: string]: unknown;
 }
@@ -132,16 +130,6 @@ export function useWebSocket({
               if (message.audio_url && onVoiceSuggestion) {
                 onVoiceSuggestion(message.audio_url);
               }
-              // Base64 full audio stream
-              if (message.audio_stream && onAudioChunk) {
-                const binaryString = atob(message.audio_stream);
-                const bytes = new Uint8Array(binaryString.length);
-                for (let i = 0; i < binaryString.length; i++) {
-                  bytes[i] = binaryString.charCodeAt(i);
-                }
-                onAudioChunk(bytes.buffer);
-                onStreamEnd?.();
-              }
               break;
 
             case 'audio_chunk':
@@ -170,12 +158,12 @@ export function useWebSocket({
       };
 
       ws.onerror = (event) => {
-        console.error('[WebSocket] Error:', event);
+        // console.error('[WebSocket] Error:', event);
         setError('WebSocket connection error');
       };
 
       ws.onclose = (event) => {
-        console.log('[WebSocket] Closed:', event.code, event.reason);
+        // console.log('[WebSocket] Closed:', event.code, event.reason);
         setIsConnected(false);
         setIsConnecting(false);
 

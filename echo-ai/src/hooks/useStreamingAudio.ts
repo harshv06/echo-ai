@@ -34,7 +34,7 @@ function getAudioContext(): AudioContext {
 // Resume AudioContext on user interaction (required by browsers)
 export async function resumeAudioContext(): Promise<void> {
   if (audioContextResumed) return;
-  
+
   const ctx = getAudioContext();
   if (ctx.state === 'suspended') {
     await ctx.resume();
@@ -95,22 +95,21 @@ export function useStreamingAudio({
       try {
         // Decode audio data
         const audioBuffer = await ctx.decodeAudioData(chunk.slice(0));
-        
+
         // Create source node
         const source = ctx.createBufferSource();
         source.buffer = audioBuffer;
-        source.playbackRate.value = 1.5;
         source.connect(gainNodeRef.current!);
-        
+
         // Track source for cleanup
         sourceNodesRef.current.push(source);
 
         // Schedule playback
         const currentTime = ctx.currentTime;
         const startTime = Math.max(currentTime, nextPlayTimeRef.current);
-        
+
         source.start(startTime);
-        nextPlayTimeRef.current = startTime + audioBuffer.duration / 1.5;
+        nextPlayTimeRef.current = startTime + audioBuffer.duration;
 
         // First chunk - mark as playing
         if (!playbackStartedRef.current) {
@@ -124,11 +123,11 @@ export function useStreamingAudio({
         source.onended = () => {
           const idx = sourceNodesRef.current.indexOf(source);
           if (idx > -1) sourceNodesRef.current.splice(idx, 1);
-          
+
           // Check if all done
-          if (!isStreamingRef.current && 
-              chunkQueueRef.current.length === 0 && 
-              sourceNodesRef.current.length === 0) {
+          if (!isStreamingRef.current &&
+            chunkQueueRef.current.length === 0 &&
+            sourceNodesRef.current.length === 0) {
             playbackStartedRef.current = false;
             setIsPlaying(false);
             onPlaybackEnd?.();
@@ -168,17 +167,17 @@ export function useStreamingAudio({
       }
     });
     sourceNodesRef.current = [];
-    
+
     // Clear queue
     chunkQueueRef.current = [];
     isStreamingRef.current = false;
     isProcessingRef.current = false;
     nextPlayTimeRef.current = 0;
     playbackStartedRef.current = false;
-    
+
     setIsPlaying(false);
     onPlaybackEnd?.();
-    console.log('[StreamingAudio] Playback stopped');
+    // console.log('[StreamingAudio] Playback stopped');
   }, [onPlaybackEnd]);
 
   // Play a single audio file (for backwards compatibility)
@@ -188,7 +187,7 @@ export function useStreamingAudio({
 
     try {
       let buffer: ArrayBuffer;
-      
+
       if (typeof audioData === 'string') {
         // URL - fetch it
         const response = await fetch(audioData);
