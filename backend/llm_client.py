@@ -1,7 +1,9 @@
+import logging
 import os
 from typing import Any, Dict
 
 import httpx
+from urllib.parse import urlencode, urlparse, urlunparse, parse_qs
 
 
 PROMPT_TEMPLATE = """You are a real-time dating coach helping a guy during his date. You're NOT talking to the girl - you're whispering advice to HIM.
@@ -128,7 +130,7 @@ async def generate_boundaries(user_context: str, date_context: str) -> str:
 async def generate_suggestion(context: Dict[str, Any]) -> str:
     api_url = os.getenv("LLM_API_URL", "").strip()
     api_key = os.getenv("LLM_API_KEY", "").strip()
-    model = os.getenv("LLM_MODEL", "gpt-4o-mini")
+    model = os.getenv("LLM_MODEL", "gemini-2.5-flash")
 
     print(f"DEBUG: Using LLM_API_URL: {api_url}")
     print(f"DEBUG: Using LLM_MODEL: {model}")
@@ -177,12 +179,27 @@ async def generate_suggestion(context: Dict[str, Any]) -> str:
         print(f"ERROR: LLM Request failed: {e}")
         return ""
 
-    return _extract_message(data)
+    logger.debug("LLM response received")
+    return _extract_message(data, api_url)
 
 
-def _extract_message(data: Dict[str, Any]) -> str:
+def _extract_message(data: Dict[str, Any], api_url: str) -> str:
+    if _is_gemini_api(api_url):
+        candidates = data.get("candidates") or []
+        if not candidates:
+            logger.warning("LLM response missing candidates")
+            return ""
+        content = candidates[0].get("content") or {}
+        parts = content.get("parts") or []
+        if not parts:
+            logger.warning("LLM response missing parts")
+            return ""
+        text = parts[0].get("text") or ""
+        return text.strip()
+
     choices = data.get("choices") or []
     if not choices:
+        logger.warning("LLM response missing choices")
         return ""
     message = choices[0].get("message") or {}
     content = message.get("content") or ""
