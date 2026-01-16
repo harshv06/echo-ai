@@ -22,9 +22,9 @@ import { StopButton } from './StopButton';
 import { cn } from '@/lib/utils';
 
 // Configuration constants
-const WS_URL = import.meta.env.VITE_WS_URL || 'ws://localhost:8080/ws';
-const SILENCE_THRESHOLD = 5000;   // 5 seconds (reduced for faster response)
-const COOLDOWN_PERIOD = 30000;    // 30 seconds between suggestions
+const WS_URL = import.meta.env.VITE_WS_URL || 'ws://localhost:8009/ws';
+const SILENCE_THRESHOLD = 4000;   // 5 seconds (reduced for faster response)
+const COOLDOWN_PERIOD = 10000;    // 10 seconds between suggestions
 
 type AppState = 'idle' | 'listening' | 'thinking' | 'speaking';
 
@@ -45,6 +45,10 @@ export function VoiceAssistant() {
     refreshRecognition,
   } = useSpeechRecognition();
 
+  // Stable callbacks for audio streaming
+  const handlePlaybackStart = useCallback(() => setAppState('speaking'), []);
+  const handlePlaybackEnd = useCallback(() => setAppState(isListening ? 'listening' : 'idle'), [isListening]);
+
   // Streaming audio playback hook
   const {
     isPlaying: isAISpeaking,
@@ -53,8 +57,8 @@ export function VoiceAssistant() {
     finishStream,
   } = useStreamingAudio({
     volume: 0.7,
-    onPlaybackStart: () => setAppState('speaking'),
-    onPlaybackEnd: () => setAppState(isListening ? 'listening' : 'idle'),
+    onPlaybackStart: handlePlaybackStart,
+    onPlaybackEnd: handlePlaybackEnd,
   });
 
   // Handle incoming audio chunks
@@ -79,6 +83,54 @@ export function VoiceAssistant() {
       .catch(e => console.error('[VoiceAssistant] Failed to fetch audio:', e));
   }, [queueChunk, finishStream]);
 
+  // Handle text suggestion (Browser TTS)
+  const handleTextSuggestion = useCallback((text: string, language: string) => {
+    if (!text) return;
+
+    // stop any current audio
+    window.speechSynthesis.cancel();
+
+    const utterance = new SpeechSynthesisUtterance(text);
+
+    // Attempt to select a voice (prefer Google Hindi or similar for Hinglish/Hindi)
+    const voices = window.speechSynthesis.getVoices();
+    let selectedVoice = null;
+
+    if (language.includes('hi')) {
+      selectedVoice = voices.find(v => v.lang.includes('hi') || v.name.includes('Google Hindi'));
+    }
+
+    if (!selectedVoice) {
+      // Fallback to a female English voice usually good for dating coach persona
+      selectedVoice = voices.find(v => v.name.includes('Google UK English Female') || v.name.includes('Samantha'));
+    }
+
+    if (selectedVoice) {
+      utterance.voice = selectedVoice;
+    }
+
+    // Adjust rate/pitch for better persona
+    utterance.rate = 1.0;
+    utterance.pitch = 1.1;
+
+    utterance.onstart = () => {
+      console.log('[VoiceAssistant] Browser TTS started');
+      setAppState('speaking');
+    };
+
+    utterance.onend = () => {
+      console.log('[VoiceAssistant] Browser TTS ended');
+      setAppState(isListening ? 'listening' : 'idle');
+    };
+
+    utterance.onerror = (e) => {
+      console.error('[VoiceAssistant] Browser TTS error', e);
+      setAppState(isListening ? 'listening' : 'idle');
+    };
+
+    window.speechSynthesis.speak(utterance);
+  }, [isListening]);
+
   // WebSocket hook with streaming support
   const {
     isConnected,
@@ -89,6 +141,7 @@ export function VoiceAssistant() {
     onAudioChunk: handleAudioChunk,
     onStreamEnd: handleStreamEnd,
     onVoiceSuggestion: handleVoiceSuggestion,
+    onTextSuggestion: handleTextSuggestion,
     autoConnect: true,
   });
 
