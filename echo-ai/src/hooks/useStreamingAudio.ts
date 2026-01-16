@@ -99,6 +99,7 @@ export function useStreamingAudio({
         // Create source node
         const source = ctx.createBufferSource();
         source.buffer = audioBuffer;
+        source.playbackRate.value = 1.5;
         source.connect(gainNodeRef.current!);
         
         // Track source for cleanup
@@ -109,7 +110,7 @@ export function useStreamingAudio({
         const startTime = Math.max(currentTime, nextPlayTimeRef.current);
         
         source.start(startTime);
-        nextPlayTimeRef.current = startTime + audioBuffer.duration;
+        nextPlayTimeRef.current = startTime + audioBuffer.duration / 1.5;
 
         // First chunk - mark as playing
         if (!playbackStartedRef.current) {
