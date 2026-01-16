@@ -33,6 +33,13 @@ export function useSpeechRecognition(): UseSpeechRecognitionReturn {
   const [lastSpokenAt, setLastSpokenAt] = useState<number | null>(null);
 
   const recognitionRef = useRef<SpeechRecognition | null>(null);
+  const shouldRestartRef = useRef(false);
+  const restartTimeoutRef = useRef<NodeJS.Timeout | null>(null);
+  const lastErrorAtRef = useRef(0);
+  const backoffMsRef = useRef(1000);
+  const lastErrorTypeRef = useRef<string | null>(null);
+  const retryCountRef = useRef(0);
+  const maxNetworkRetries = 3;
   const isSupported = isSpeechRecognitionSupported();
 
   // Clean up old entries from the buffer
@@ -65,6 +72,10 @@ export function useSpeechRecognition(): UseSpeechRecognitionReturn {
 
     recognition.onstart = () => {
       setIsListening(true);
+      shouldRestartRef.current = true;
+      backoffMsRef.current = 1000;
+      retryCountRef.current = 0;
+      lastErrorTypeRef.current = null;
       console.log('[SpeechRecognition] Started listening');
     };
 
@@ -112,14 +123,25 @@ export function useSpeechRecognition(): UseSpeechRecognitionReturn {
 
     recognition.onerror = (event: SpeechRecognitionErrorEvent) => {
       console.error('[SpeechRecognition] Error:', event.error);
+      lastErrorAtRef.current = Date.now();
+      lastErrorTypeRef.current = event.error;
       
       if (event.error === 'not-allowed') {
         setError('Microphone permission denied');
         setIsListening(false);
+        shouldRestartRef.current = false;
       } else if (event.error === 'no-speech') {
         // This is normal during silence, don't treat as error
       } else if (event.error === 'network') {
-        setError('Network error - check your connection');
+        retryCountRef.current += 1;
+        if (retryCountRef.current > maxNetworkRetries) {
+          setError('Network error. Tap to restart listening.');
+          shouldRestartRef.current = false;
+        } else {
+          setError('Network error - retrying...');
+          // Back off a bit before trying again
+          shouldRestartRef.current = true;
+        }
       } else {
         setError(`Speech recognition error: ${event.error}`);
       }
@@ -128,13 +150,25 @@ export function useSpeechRecognition(): UseSpeechRecognitionReturn {
     recognition.onend = () => {
       console.log('[SpeechRecognition] Ended');
       // Auto-restart if we're supposed to be listening
-      if (recognitionRef.current) {
-        try {
-          recognition.start();
-        } catch (e) {
-          console.log('[SpeechRecognition] Could not restart');
+      if (recognitionRef.current && shouldRestartRef.current) {
+        if (lastErrorTypeRef.current === 'network' && retryCountRef.current > maxNetworkRetries) {
           setIsListening(false);
+          return;
         }
+        if (restartTimeoutRef.current) {
+          clearTimeout(restartTimeoutRef.current);
+        }
+        const sinceError = Date.now() - lastErrorAtRef.current;
+        const delay = sinceError < 3000 ? backoffMsRef.current : 0;
+        restartTimeoutRef.current = setTimeout(() => {
+          try {
+            recognition.start();
+            backoffMsRef.current = Math.min(backoffMsRef.current * 2, 15000);
+          } catch (e) {
+            console.log('[SpeechRecognition] Could not restart');
+            setIsListening(false);
+          }
+        }, delay);
       }
     };
 
@@ -149,6 +183,13 @@ export function useSpeechRecognition(): UseSpeechRecognitionReturn {
 
   const stopListening = useCallback(() => {
     if (recognitionRef.current) {
+      shouldRestartRef.current = false;
+      lastErrorTypeRef.current = null;
+      retryCountRef.current = 0;
+      if (restartTimeoutRef.current) {
+        clearTimeout(restartTimeoutRef.current);
+        restartTimeoutRef.current = null;
+      }
       recognitionRef.current.stop();
       recognitionRef.current = null;
     }
@@ -160,6 +201,10 @@ export function useSpeechRecognition(): UseSpeechRecognitionReturn {
   useEffect(() => {
     return () => {
       if (recognitionRef.current) {
+        if (restartTimeoutRef.current) {
+          clearTimeout(restartTimeoutRef.current);
+          restartTimeoutRef.current = null;
+        }
         recognitionRef.current.stop();
       }
     };

@@ -1,6 +1,6 @@
 # Echo AI Backend (Dating Coach)
 
-This FastAPI backend accepts WebSocket snapshots from a frontend, computes lightweight conversation signals, calls an LLM for a short suggestion, runs safety filtering, and returns TTS audio to the client.
+This FastAPI backend accepts WebSocket snapshots from a frontend, computes lightweight conversation signals, calls an LLM for a short suggestion, runs safety filtering, and returns suggestion text to the client.
 
 ## What it does (end-to-end flow)
 
@@ -9,8 +9,8 @@ This FastAPI backend accepts WebSocket snapshots from a frontend, computes light
 3. Backend computes derived signals (silence frequency, topic repetition, sentiment trend).
 4. Backend **compresses context** into signals (no raw transcript is stored).
 5. Backend prompts the LLM for a short, friendly suggestion.
-6. Suggestion is safety-filtered and sent to TTS.
-7. Backend sends `{ "type": "voice_suggestion", "audio_url" | "audio_stream" }`.
+6. Suggestion is safety-filtered.
+7. Backend sends `{ "type": "voice_suggestion", "suggestion_text": "..." }`.
 
 ## WebSocket API
 
@@ -41,14 +41,7 @@ Notes:
 ```
 {
   "type": "voice_suggestion",
-  "audio_url": "https://..."
-}
-```
-or
-```
-{
-  "type": "voice_suggestion",
-  "audio_stream": "<base64 audio>"
+  "suggestion_text": "..."
 }
 ```
 
@@ -72,7 +65,7 @@ If you need horizontal scaling, swap back to Redis.
 ## Performance
 
 - Async I/O throughout
-- LLM/TTS calls use short timeouts to keep latency low
+- LLM calls use short timeouts to keep latency low
 
 ## Setup
 
@@ -86,7 +79,6 @@ uvicorn main:app --reload --host 0.0.0.0 --port 8000
 ## Environment Variables
 
 - `LLM_API_URL`, `LLM_API_KEY`, `LLM_MODEL`
-- `TTS_API_URL`, `TTS_API_KEY`, `TTS_VOICE_ID`
 
 ## Notes for Real-World Use
 

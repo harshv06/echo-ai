@@ -1,6 +1,9 @@
+import logging
 import re
 from typing import Dict
 
+
+logger = logging.getLogger("safety")
 
 UNSAFE_PATTERNS = [
     r"\bdiagnos(e|is)\b",
@@ -33,6 +36,7 @@ def filter_suggestion(text: str, context: Dict) -> str:
     lowered = cleaned.lower()
     for pattern in UNSAFE_PATTERNS:
         if re.search(pattern, lowered):
+            logger.info("Suggestion blocked by safety pattern=%s", pattern)
             return ""
 
     if any(phrase in lowered for phrase in ["you should", "you must", "you need to"]):

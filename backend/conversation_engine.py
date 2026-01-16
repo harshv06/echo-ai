@@ -1,7 +1,10 @@
+import logging
 import re
 import time
 from typing import Any, Dict, List
 
+
+logger = logging.getLogger("engine")
 
 STOPWORDS = {
     "the",
@@ -118,6 +121,15 @@ def analyze_snapshot(snapshot: Dict[str, Any], state: Dict[str, Any]) -> Dict[st
             ),
         )
 
+    logger.debug(
+        "Signals silence_freq=%.2f topic_rep=%.2f sentiment_trend=%.2f engagement=%.2f confidence=%.2f",
+        silence_frequency,
+        topic_repetition,
+        sentiment_trend,
+        engagement_score,
+        confidence_score,
+    )
+
     return {
         "pause_timestamps": pause_timestamps,
         "silence_frequency": silence_frequency,
@@ -149,4 +161,5 @@ def build_llm_context(
         "current_topics": analysis.get("recent_topics") or [],
         "dominant_speaker": analysis.get("dominant_speaker"),
         "confidence_score": analysis.get("confidence_score"),
+        "recent_suggestions": state.get("recent_suggestions") or [],
     }

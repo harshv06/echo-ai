@@ -27,6 +27,7 @@ interface ConversationSnapshot {
 interface WebSocketMessage {
   type: string;
   conversation_snapshot?: ConversationSnapshot;
+  suggestion_text?: string;
   audio_url?: string;
   audio_stream?: string;
   audio_chunk?: string; // base64 encoded audio chunk
@@ -38,6 +39,7 @@ interface UseWebSocketProps {
   onAudioChunk?: (audioData: ArrayBuffer) => void;
   onStreamEnd?: () => void;
   onVoiceSuggestion?: (audioUrl: string) => void;
+  onTextSuggestion?: (text: string) => void;
   onMessage?: (message: WebSocketMessage) => void;
   autoConnect?: boolean;
 }
@@ -77,6 +79,7 @@ export function useWebSocket({
   onAudioChunk,
   onStreamEnd,
   onVoiceSuggestion,
+  onTextSuggestion,
   onMessage,
   autoConnect = true,
 }: UseWebSocketProps): UseWebSocketReturn {
@@ -125,6 +128,9 @@ export function useWebSocket({
 
           switch (message.type) {
             case 'voice_suggestion':
+              if (message.suggestion_text && onTextSuggestion) {
+                onTextSuggestion(message.suggestion_text);
+              }
               // Legacy: full audio URL
               if (message.audio_url && onVoiceSuggestion) {
                 onVoiceSuggestion(message.audio_url);
@@ -193,7 +199,7 @@ export function useWebSocket({
       setIsConnecting(false);
       setError('Failed to create WebSocket connection');
     }
-  }, [url, onAudioChunk, onStreamEnd, onVoiceSuggestion, onMessage]);
+  }, [url, onAudioChunk, onStreamEnd, onVoiceSuggestion, onTextSuggestion, onMessage]);
 
   const disconnect = useCallback(() => {
     if (reconnectTimeoutRef.current) {
@@ -215,6 +221,7 @@ export function useWebSocket({
         lastTurns: getRecentTurns(snapshot.lastTurns, 4),
         lastSpokenAt: snapshot.lastSpokenAt,
         detectedLanguage: snapshot.detectedLanguage,
+        confidenceScore: snapshot.confidenceScore,
       };
 
       const message: WebSocketMessage = {

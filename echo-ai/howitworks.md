@@ -13,8 +13,8 @@ The frontend records audio, performs speech recognition locally, detects silence
    - `lastSpokenAt` (seconds)
    - `detectedLanguage` (`english|hindi`)
    - `confidenceScore` (client stub)
-5. **Backend responds** with `voice_suggestion` and audio.
-6. **Audio playback** uses a single shared `AudioContext` for low latency.
+5. **Backend responds** with `voice_suggestion` containing `suggestion_text`.
+6. **Browser TTS** (SpeechSynthesis) speaks the suggestion at 1.5x rate.
 
 ## Edge Cases
 
@@ -23,12 +23,10 @@ The frontend records audio, performs speech recognition locally, detects silence
 - **Network drops** → WebSocket auto-reconnects with backoff.
 - **AI speaking** → pause detection is skipped.
 - **Cooldown active** → silence detection will not trigger backend calls.
-- **Audio stream base64** → decoded into audio chunks and played.
-- **Audio URL** → fetched and played as a single chunk (legacy support).
+- **SpeechSynthesis unsupported** → suggestion is not spoken (can be surfaced as text).
 
 ## Performance Notes
 
 - Snapshot minimization keeps payloads small.
-- Streaming audio reduces perceived latency.
-- Single AudioContext reduces resource usage.
+- Native browser TTS reduces latency and avoids external TTS.
 

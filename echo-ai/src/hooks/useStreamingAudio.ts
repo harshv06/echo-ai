@@ -99,7 +99,7 @@ export function useStreamingAudio({
         // Create source node
         const source = ctx.createBufferSource();
         source.buffer = audioBuffer;
-        source.playbackRate.value = 1.5;
+        source.playbackRate.value = 1.0;
         source.connect(gainNodeRef.current!);
         
         // Track source for cleanup

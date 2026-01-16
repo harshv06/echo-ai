@@ -14,7 +14,7 @@ import { useState, useCallback, useEffect, useRef } from 'react';
 import { useSpeechRecognition } from '@/hooks/useSpeechRecognition';
 import { useSilenceDetection } from '@/hooks/useSilenceDetection';
 import { useWebSocket } from '@/hooks/useWebSocket';
-import { useStreamingAudio, resumeAudioContext } from '@/hooks/useStreamingAudio';
+import { resumeAudioContext } from '@/hooks/useStreamingAudio';
 import { VoiceIndicator } from './VoiceIndicator';
 import { TranscriptDisplay } from './TranscriptDisplay';
 import { StatusBar } from './StatusBar';
@@ -32,6 +32,8 @@ export function VoiceAssistant() {
   const [appState, setAppState] = useState<AppState>('idle');
   const shouldResumeListeningRef = useRef(false);
   const silenceDurationRef = useRef(0);
+  const isSpeakingRef = useRef(false);
+  const utteranceRef = useRef<SpeechSynthesisUtterance | null>(null);
 
   // Speech recognition hook
   const {
@@ -46,51 +48,49 @@ export function VoiceAssistant() {
     lastSpokenAt,
   } = useSpeechRecognition();
 
-  // Streaming audio playback hook
-  const {
-    isPlaying: isAISpeaking,
-    queueChunk,
-    stop: stopAudio,
-    finishStream,
-  } = useStreamingAudio({
-    volume: 0.7,
-    onPlaybackStart: () => {
+  const stopSpeech = useCallback(() => {
+    if ('speechSynthesis' in window) {
+      window.speechSynthesis.cancel();
+    }
+    isSpeakingRef.current = false;
+    setAppState(isListening ? 'listening' : 'idle');
+  }, [isListening]);
+
+  const speakSuggestion = useCallback((text: string) => {
+    if (!('speechSynthesis' in window)) {
+      console.warn('[VoiceAssistant] SpeechSynthesis not supported');
+      return;
+    }
+
+    stopSpeech();
+    const utterance = new SpeechSynthesisUtterance(text);
+    utterance.rate = 1.0;
+    utteranceRef.current = utterance;
+
+    utterance.onstart = () => {
+      isSpeakingRef.current = true;
       setAppState('speaking');
       if (isListening) {
         shouldResumeListeningRef.current = true;
         stopListening();
       }
-    },
-    onPlaybackEnd: () => {
+    };
+
+    utterance.onend = () => {
+      isSpeakingRef.current = false;
       setAppState(isListening ? 'listening' : 'idle');
       if (shouldResumeListeningRef.current) {
         shouldResumeListeningRef.current = false;
         startListening();
       }
-    },
-  });
+    };
 
-  // Handle incoming audio chunks
-  const handleAudioChunk = useCallback((audioData: ArrayBuffer) => {
-    queueChunk(audioData);
-  }, [queueChunk]);
+    window.speechSynthesis.speak(utterance);
+  }, [isListening, stopListening, startListening, stopSpeech]);
 
-  // Handle stream end
-  const handleStreamEnd = useCallback(() => {
-    finishStream();
-  }, [finishStream]);
-
-  // Handle legacy voice suggestion (full URL)
-  const handleVoiceSuggestion = useCallback((audioUrl: string) => {
-    // Fetch and queue as single chunk
-    fetch(audioUrl)
-      .then(res => res.arrayBuffer())
-      .then(buffer => {
-        queueChunk(buffer);
-        finishStream();
-      })
-      .catch(e => console.error('[VoiceAssistant] Failed to fetch audio:', e));
-  }, [queueChunk, finishStream]);
+  const handleTextSuggestion = useCallback((text: string) => {
+    speakSuggestion(text);
+  }, [speakSuggestion]);
 
   // WebSocket hook with streaming support
   const {
@@ -99,9 +99,7 @@ export function VoiceAssistant() {
     sendPauseDetected,
   } = useWebSocket({
     url: WS_URL,
-    onAudioChunk: handleAudioChunk,
-    onStreamEnd: handleStreamEnd,
-    onVoiceSuggestion: handleVoiceSuggestion,
+    onTextSuggestion: handleTextSuggestion,
     autoConnect: true,
   });
 
@@ -113,7 +111,7 @@ export function VoiceAssistant() {
     }
 
     // Don't send if AI is currently speaking
-    if (isAISpeaking) {
+    if (isSpeakingRef.current) {
       console.log('[VoiceAssistant] Skipping pause - AI is speaking');
       return;
     }
@@ -138,7 +136,6 @@ export function VoiceAssistant() {
     });
   }, [
     isConnected,
-    isAISpeaking,
     sendPauseDetected,
     recentTurns,
     lastSpokenAt,
@@ -168,24 +165,24 @@ export function VoiceAssistant() {
 
   // Update cooldown when AI finishes speaking
   useEffect(() => {
-    if (!isAISpeaking && appState === 'speaking') {
+    if (!isSpeakingRef.current && appState === 'speaking') {
       updateLastSuggestionTime();
     }
-  }, [isAISpeaking, appState, updateLastSuggestionTime]);
+  }, [appState, updateLastSuggestionTime]);
 
   // Update app state based on listening status
   useEffect(() => {
-    if (!isAISpeaking) {
+    if (!isSpeakingRef.current) {
       setAppState(isListening ? 'listening' : 'idle');
     }
-  }, [isListening, isAISpeaking]);
+  }, [isListening]);
 
   // Manual stop handler
   const handleStopAudio = useCallback(() => {
-    stopAudio();
+    stopSpeech();
     resetPause();
     console.log('[VoiceAssistant] Manual stop triggered');
-  }, [stopAudio, resetPause]);
+  }, [stopSpeech, resetPause]);
 
   // Toggle listening (also resumes AudioContext)
   const toggleListening = useCallback(async () => {
@@ -194,11 +191,11 @@ export function VoiceAssistant() {
 
     if (isListening) {
       stopListening();
-      stopAudio();
+      stopSpeech();
     } else {
       startListening();
     }
-  }, [isListening, startListening, stopListening, stopAudio]);
+  }, [isListening, startListening, stopListening, stopSpeech]);
 
   // Combined error
   const error = speechError || wsError;
@@ -248,7 +245,7 @@ export function VoiceAssistant() {
         {/* Stop button - only visible when AI is speaking */}
         <StopButton
           onClick={handleStopAudio}
-          visible={isAISpeaking}
+          visible={isSpeakingRef.current}
         />
 
         {/* Transcript display */}
