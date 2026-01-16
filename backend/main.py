@@ -1,3 +1,4 @@
+import os
 from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
 from pydantic import BaseModel
@@ -42,3 +43,8 @@ async def shutdown() -> None:
 async def analyze_boundaries(request: AnalyzeBoundariesRequest):
     result = await generate_boundaries(request.user_context, request.date_context)
     return {"result": result}
+
+if __name__ == "__main__":
+    import uvicorn
+    port = int(os.getenv("PORT", 8018))
+    uvicorn.run("main:app", host="0.0.0.0", port=port, reload=True)
