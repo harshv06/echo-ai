@@ -88,7 +88,10 @@ export function useWebSocket({
   const maxReconnectAttempts = 5;
 
   const connect = useCallback(() => {
-    if (wsRef.current?.readyState === WebSocket.OPEN) {
+    // Prevent multiple simultaneous connection attempts
+    if (wsRef.current?.readyState === WebSocket.OPEN ||
+      wsRef.current?.readyState === WebSocket.CONNECTING) {
+      console.log('[WebSocket] Already connected or connecting');
       return;
     }
 
@@ -97,11 +100,11 @@ export function useWebSocket({
 
     try {
       const ws = new WebSocket(url);
-      // Support binary frames for audio streaming
+      // Support binary frames for  streaming
       ws.binaryType = 'arraybuffer';
 
       ws.onopen = () => {
-        console.log('[WebSocket] Connected');
+        console.log('[WebSocket] Connected to', url);
         setIsConnected(true);
         setIsConnecting(false);
         setError(null);
@@ -168,7 +171,7 @@ export function useWebSocket({
         if (event.code !== 1000 && reconnectAttemptsRef.current < maxReconnectAttempts) {
           const delay = Math.min(1000 * Math.pow(2, reconnectAttemptsRef.current), 30000);
           console.log(`[WebSocket] Reconnecting in ${delay}ms...`);
-          
+
           reconnectTimeoutRef.current = setTimeout(() => {
             reconnectAttemptsRef.current++;
             connect();

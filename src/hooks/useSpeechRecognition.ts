@@ -18,10 +18,15 @@ interface UseSpeechRecognitionReturn {
   startListening: () => void;
   stopListening: () => void;
   lastSpokenAt: number | null;
+  refreshRecognition: () => void;
 }
 
 // Buffer duration in milliseconds (60 seconds)
 const BUFFER_DURATION = 60000;
+// Watchdog timeout - restart if no results for this long while listening
+const WATCHDOG_TIMEOUT = 30000; // 30 seconds
+// Delay before auto-restart to prevent rapid restarts
+const RESTART_DELAY = 150; // 150ms
 
 export function useSpeechRecognition(): UseSpeechRecognitionReturn {
   const [isListening, setIsListening] = useState(false);
@@ -31,8 +36,10 @@ export function useSpeechRecognition(): UseSpeechRecognitionReturn {
   const [detectedLanguage, setDetectedLanguage] = useState('en-US');
   const [error, setError] = useState<string | null>(null);
   const [lastSpokenAt, setLastSpokenAt] = useState<number | null>(null);
+  const [lastResultTime, setLastResultTime] = useState<number>(Date.now());
 
   const recognitionRef = useRef<SpeechRecognition | null>(null);
+  const restartTimeoutRef = useRef<NodeJS.Timeout | null>(null);
   const isSupported = isSpeechRecognitionSupported();
 
   // Clean up old entries from the buffer
@@ -69,6 +76,9 @@ export function useSpeechRecognition(): UseSpeechRecognitionReturn {
     };
 
     recognition.onresult = (event: SpeechRecognitionEvent) => {
+      // Update last result time for watchdog
+      setLastResultTime(Date.now());
+
       let finalTranscript = '';
       let interimText = '';
 
@@ -78,7 +88,7 @@ export function useSpeechRecognition(): UseSpeechRecognitionReturn {
 
         if (result.isFinal) {
           finalTranscript += text;
-          
+
           // Add to recent turns buffer
           const newTurn = { text: text.trim(), timestamp: Date.now() };
           setRecentTurns(prev => {
@@ -87,9 +97,9 @@ export function useSpeechRecognition(): UseSpeechRecognitionReturn {
             const cutoff = Date.now() - BUFFER_DURATION;
             return updated.filter(turn => turn.timestamp > cutoff);
           });
-          
+
           setLastSpokenAt(Date.now());
-          
+
           // Try to detect language from result
           if (result[0].confidence) {
             // Simple heuristic for Hindi detection
@@ -112,7 +122,7 @@ export function useSpeechRecognition(): UseSpeechRecognitionReturn {
 
     recognition.onerror = (event: SpeechRecognitionErrorEvent) => {
       console.error('[SpeechRecognition] Error:', event.error);
-      
+
       if (event.error === 'not-allowed') {
         setError('Microphone permission denied');
         setIsListening(false);
@@ -127,14 +137,29 @@ export function useSpeechRecognition(): UseSpeechRecognitionReturn {
 
     recognition.onend = () => {
       console.log('[SpeechRecognition] Ended');
+
+      // Clear any pending restart
+      if (restartTimeoutRef.current) {
+        clearTimeout(restartTimeoutRef.current);
+        restartTimeoutRef.current = null;
+      }
+
       // Auto-restart if we're supposed to be listening
       if (recognitionRef.current) {
-        try {
-          recognition.start();
-        } catch (e) {
-          console.log('[SpeechRecognition] Could not restart');
-          setIsListening(false);
-        }
+        // Add delay to prevent rapid restarts and give browser time to clean up
+        restartTimeoutRef.current = setTimeout(() => {
+          if (recognitionRef.current) {
+            try {
+              recognition.start();
+              console.log('[SpeechRecognition] Successfully restarted');
+              setError(null);
+            } catch (e) {
+              console.error('[SpeechRecognition] Restart failed:', e);
+              setIsListening(false);
+              setError('Speech recognition stopped. Please click to restart.');
+            }
+          }
+        }, RESTART_DELAY);
       }
     };
 
@@ -148,6 +173,12 @@ export function useSpeechRecognition(): UseSpeechRecognitionReturn {
   }, [isSupported]);
 
   const stopListening = useCallback(() => {
+    // Clear any pending restart
+    if (restartTimeoutRef.current) {
+      clearTimeout(restartTimeoutRef.current);
+      restartTimeoutRef.current = null;
+    }
+
     if (recognitionRef.current) {
       recognitionRef.current.stop();
       recognitionRef.current = null;
@@ -171,6 +202,36 @@ export function useSpeechRecognition(): UseSpeechRecognitionReturn {
     return () => clearInterval(interval);
   }, [cleanBuffer]);
 
+  // Manual refresh function for users
+  const refreshRecognition = useCallback(() => {
+    console.log('[SpeechRecognition] Manual refresh triggered');
+    if (recognitionRef.current) {
+      recognitionRef.current.stop();
+      // Will auto-restart via onend handler
+    } else if (isListening) {
+      // If somehow listening state is true but no recognition instance
+      setIsListening(false);
+      setTimeout(() => startListening(), 150);
+    }
+  }, [isListening, startListening]);
+
+  // Watchdog: detect when recognition gets stuck
+  useEffect(() => {
+    if (!isListening) return;
+
+    const watchdogInterval = setInterval(() => {
+      const timeSinceResult = Date.now() - lastResultTime;
+
+      if (timeSinceResult > WATCHDOG_TIMEOUT) {
+        console.warn('[SpeechRecognition] No results for', timeSinceResult, 'ms - may be stuck, refreshing...');
+        refreshRecognition();
+        setLastResultTime(Date.now()); // Reset to prevent rapid refreshes
+      }
+    }, 5000); // Check every 5 seconds
+
+    return () => clearInterval(watchdogInterval);
+  }, [isListening, lastResultTime, refreshRecognition]);
+
   return {
     isListening,
     isSupported,
@@ -182,5 +243,6 @@ export function useSpeechRecognition(): UseSpeechRecognitionReturn {
     startListening,
     stopListening,
     lastSpokenAt,
+    refreshRecognition,
   };
 }
