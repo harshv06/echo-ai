@@ -21,7 +21,7 @@ import { StatusBar } from './StatusBar';
 import { StopButton } from './StopButton';
 import { cn } from '@/lib/utils';
 
-// Configuration constants
+
 const WS_URL = import.meta.env.VITE_WS_URL || 'ws://localhost:8018/ws';
 const SILENCE_THRESHOLD = 2000;   // 5 seconds (reduced for faster response)
 const COOLDOWN_PERIOD = 5000;    // 10 seconds between suggestions
