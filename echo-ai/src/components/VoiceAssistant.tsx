@@ -30,6 +30,9 @@ type AppState = 'idle' | 'listening' | 'thinking' | 'speaking';
 
 export function VoiceAssistant() {
   const [appState, setAppState] = useState<AppState>('idle');
+  const [userContext, setUserContext] = useState('');
+  const [dateContext, setDateContext] = useState('');
+  const [isContextVisible, setIsContextVisible] = useState(false);
 
   // Speech recognition hook
   const {
@@ -165,8 +168,10 @@ export function VoiceAssistant() {
       lastTurns: recentTurns,
       lastSpokenAt,
       detectedLanguage,
+      userContext,
+      dateContext,
     });
-  }, [isConnected, isAISpeaking, sendPauseDetected, recentTurns, lastSpokenAt, detectedLanguage]);
+  }, [isConnected, isAISpeaking, sendPauseDetected, recentTurns, lastSpokenAt, detectedLanguage, userContext, dateContext]);
 
   // Silence detection hook with cooldown
   const {
@@ -247,6 +252,41 @@ export function VoiceAssistant() {
           <h1 className="text-xl font-light tracking-wide text-foreground">
             Voice Assistant
           </h1>
+        </div>
+
+        {/* Context Controls */}
+        <div className="w-full max-w-md mb-6 relative z-10">
+          <button
+            onClick={() => setIsContextVisible(!isContextVisible)}
+            className="text-xs text-muted-foreground hover:text-foreground underline mb-2 w-full text-center"
+          >
+            {isContextVisible ? 'Hide Context' : 'Add Context (User & Date)'}
+          </button>
+
+          {isContextVisible && (
+            <div className="grid gap-3 p-4 bg-card/50 backdrop-blur-sm rounded-lg border border-border w-full animate-in fade-in slide-in-from-top-2 duration-200">
+              <div>
+                <label className="block text-[10px] uppercase font-bold text-muted-foreground mb-1">USER PROFILE (You)</label>
+                <textarea
+                  className="w-full p-2 text-sm bg-background border border-input rounded-md focus:ring-1 focus:ring-primary outline-none resize-none"
+                  rows={2}
+                  placeholder="E.g. Software engineer, loves hiking..."
+                  value={userContext}
+                  onChange={(e) => setUserContext(e.target.value)}
+                />
+              </div>
+              <div>
+                <label className="block text-[10px] uppercase font-bold text-muted-foreground mb-1">DATE PROFILE (Her)</label>
+                <textarea
+                  className="w-full p-2 text-sm bg-background border border-input rounded-md focus:ring-1 focus:ring-primary outline-none resize-none"
+                  rows={2}
+                  placeholder="E.g. Artist, loves cats..."
+                  value={dateContext}
+                  onChange={(e) => setDateContext(e.target.value)}
+                />
+              </div>
+            </div>
+          )}
         </div>
 
         {/* Voice indicator - clickable to toggle */}

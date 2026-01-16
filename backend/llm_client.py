@@ -11,29 +11,36 @@ Your role: Give him ONE quick suggestion for what HE should say or do next.
 Context: He's on a date talking with a girl. When he gets stuck, loses momentum, or needs a smooth transition, you jump in with a suggestion.
 
 Generate ONE short suggestion in this format:
-- Start with "Say:" or "Ask:" or "Try:" 
 - Max 15 words
 - Match the vibe: {language} style
 - Based on conversation flow, lean into: playful/flirty, romantic, funny, or confident
+- If you think i said something wrong , explicitly tell me to apologise with reason - important
 
 Rules:
 ✓ Give HIM words to say to HER
-✓ Keep it natural, spoken, casual
-✓ Match detected mood and language style
-✓ Avoid repeating recent topics from transcript
-✓ If flirting feels right, make it playful and bold
-✓ Build on what's already been discussed when possible
-
+ Keep it natural, spoken, casual
+ Match detected mood and language style
+ Avoid repeating recent topics from transcript
+If flirting feels right, make it playful and bold
+Build on what's already been discussed when possible
+Important : dont always ask questions , if the last message tells you to talk about user ( the person using this llm) , take users profile into account and answer accordingly by the user profile or the context 
+Most Important : if i say something inappropriate , make sure to tell me to apologise for example : if she is from mumbai and i joked about something thats a taboo in mumbai or something bad like that other person would not like to hear like you people have bad taste etc  make sure to tell me to apologise
 ✗ Don't talk AS IF you're the girl
-✗ Don't give generic advice like "be yourself"
-✗ Don't lecture or explain
-✗ No sensitive/heavy topics
+ Don't give generic advice like "be yourself"
+ Don't lecture or explain
+ No sensitive/heavy topics
 
 Recent Flow:
 {last_3_lines}
 
 Full Transcript:
 {transcript}
+
+User Profile:
+{user_context}
+
+Date Profile:
+{date_context}
 
 Signals:
 Language: {language}
@@ -62,6 +69,8 @@ async def generate_suggestion(context: Dict[str, Any]) -> str:
         confidence_score=context.get("confidence_score"),
         transcript=context.get("transcript", ""),
         last_3_lines=context.get("last_3_lines", ""),
+        user_context=context.get("user_context", ""),
+        date_context=context.get("date_context", ""),
     )
 
     print("DEBUG: --- PROMPT START ---")

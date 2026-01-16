@@ -158,4 +158,6 @@ def build_llm_context(
         "last_3_lines": "\n".join(
             [f"{t.get('speaker', 'User')}: {t.get('text', '')}" for t in raw_turns[-3:]]
         ),
+        "user_context": snapshot.get("userContext", ""),
+        "date_context": snapshot.get("dateContext", ""),
     }

@@ -21,6 +21,8 @@ interface ConversationSnapshot {
   lastTurns: ConversationTurn[];
   lastSpokenAt: number | null;
   detectedLanguage: string;
+  userContext?: string;
+  dateContext?: string;
 }
 
 interface WebSocketMessage {
@@ -213,6 +215,8 @@ export function useWebSocket({
         lastTurns: getAllTurns(snapshot.lastTurns),
         lastSpokenAt: snapshot.lastSpokenAt,
         detectedLanguage: snapshot.detectedLanguage,
+        userContext: snapshot.userContext,
+        dateContext: snapshot.dateContext,
       };
 
       const message: WebSocketMessage = {
