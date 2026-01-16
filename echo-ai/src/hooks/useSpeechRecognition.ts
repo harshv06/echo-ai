@@ -21,8 +21,8 @@ interface UseSpeechRecognitionReturn {
   refreshRecognition: () => void;
 }
 
-// Buffer duration in milliseconds (60 seconds)
-const BUFFER_DURATION = 60000;
+// Buffer duration in milliseconds (60 minutes)
+const BUFFER_DURATION = 3600000;
 // Watchdog timeout - restart if no results for this long while listening
 const WATCHDOG_TIMEOUT = 10000; // 10 seconds - aggressive recovery
 // Delay before auto-restart to prevent rapid restarts

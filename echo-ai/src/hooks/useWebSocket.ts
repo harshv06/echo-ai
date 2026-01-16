@@ -21,6 +21,9 @@ interface ConversationSnapshot {
   lastTurns: ConversationTurn[];
   lastSpokenAt: number | null;
   detectedLanguage: string;
+  userContext?: string;
+  dateContext?: string;
+  boundaryGuidelines?: string;
 }
 
 interface WebSocketMessage {
@@ -28,6 +31,8 @@ interface WebSocketMessage {
   conversation_snapshot?: ConversationSnapshot;
   audio_url?: string;
   audio_chunk?: string; // base64 encoded audio chunk
+  text?: string;        // Text suggestion for browser TTS
+  language?: string;
   [key: string]: unknown;
 }
 
@@ -36,6 +41,7 @@ interface UseWebSocketProps {
   onAudioChunk?: (audioData: ArrayBuffer) => void;
   onStreamEnd?: () => void;
   onVoiceSuggestion?: (audioUrl: string) => void;
+  onTextSuggestion?: (text: string, language: string) => void;
   onMessage?: (message: WebSocketMessage) => void;
   autoConnect?: boolean;
 }
@@ -64,10 +70,9 @@ function cleanTranscript(turns: ConversationTurn[]): ConversationTurn[] {
     .filter(turn => turn.text.length > 0); // Remove empty turns
 }
 
-// Get only last N turns (context minimization)
-function getRecentTurns(turns: ConversationTurn[], maxTurns: number = 4): ConversationTurn[] {
-  const cleaned = cleanTranscript(turns);
-  return cleaned.slice(-maxTurns);
+// Get all turns (full context)
+function getAllTurns(turns: ConversationTurn[]): ConversationTurn[] {
+  return cleanTranscript(turns);
 }
 
 export function useWebSocket({
@@ -75,6 +80,7 @@ export function useWebSocket({
   onAudioChunk,
   onStreamEnd,
   onVoiceSuggestion,
+  onTextSuggestion,
   onMessage,
   autoConnect = true,
 }: UseWebSocketProps): UseWebSocketReturn {
@@ -129,6 +135,10 @@ export function useWebSocket({
               // Legacy: full audio URL
               if (message.audio_url && onVoiceSuggestion) {
                 onVoiceSuggestion(message.audio_url);
+              }
+              // New: text suggestion for browser TTS
+              if (message.text && onTextSuggestion) {
+                onTextSuggestion(message.text, message.language || 'en-US');
               }
               break;
 
@@ -201,11 +211,14 @@ export function useWebSocket({
 
   const sendPauseDetected = useCallback((snapshot: ConversationSnapshot) => {
     if (wsRef.current?.readyState === WebSocket.OPEN) {
-      // Apply context minimization
+      // Send FULL context (no truncation)
       const minimalSnapshot: ConversationSnapshot = {
-        lastTurns: getRecentTurns(snapshot.lastTurns, 4),
+        lastTurns: getAllTurns(snapshot.lastTurns),
         lastSpokenAt: snapshot.lastSpokenAt,
         detectedLanguage: snapshot.detectedLanguage,
+        userContext: snapshot.userContext,
+        dateContext: snapshot.dateContext,
+        boundaryGuidelines: snapshot.boundaryGuidelines,
       };
 
       const message: WebSocketMessage = {

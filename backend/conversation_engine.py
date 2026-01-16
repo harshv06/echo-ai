@@ -85,6 +85,9 @@ def analyze_snapshot(snapshot: Dict[str, Any], state: Dict[str, Any]) -> Dict[st
     last_spoken_at = snapshot.get("lastSpokenAt")
     silence_seconds = None
     if isinstance(last_spoken_at, (int, float)):
+        # Convert milliseconds to seconds if needed
+        if last_spoken_at > 1e11:
+            last_spoken_at = last_spoken_at / 1000.0
         silence_seconds = max(0.0, now_ts - float(last_spoken_at))
 
     pause_timestamps = state.get("pause_timestamps") or []
@@ -149,16 +152,25 @@ def analyze_snapshot(snapshot: Dict[str, Any], state: Dict[str, Any]) -> Dict[st
 def build_llm_context(
     snapshot: Dict[str, Any], analysis: Dict[str, Any], state: Dict[str, Any]
 ) -> Dict[str, Any]:
+    raw_turns = snapshot.get("lastTurns", [])
+    print(f"DEBUG: build_llm_context raw_turns count: {len(raw_turns)}")
+    if len(raw_turns) > 0:
+        print(f"DEBUG: First turn sample: {raw_turns[0]}")
+
+    transcript_text = "\n".join(
+        [f"{t.get('speaker', 'User')}: {t.get('text', '')}" for t in raw_turns]
+    )
+    print(f"DEBUG: Generated transcript length: {len(transcript_text)}")
+
     return {
         "detected_language": analysis.get("detected_language") or snapshot.get("detectedLanguage"),
-        "silence_frequency": analysis.get("silence_frequency"),
-        "silence_seconds": analysis.get("silence_seconds"),
-        "topic_repetition": analysis.get("topic_repetition"),
-        "sentiment_trend": analysis.get("sentiment_trend"),
-        "engagement_score": analysis.get("engagement_score"),
         "conversation_health": analysis.get("conversation_health"),
-        "recent_topics": state.get("recent_topics") or [],
-        "current_topics": analysis.get("recent_topics") or [],
-        "dominant_speaker": analysis.get("dominant_speaker"),
         "confidence_score": analysis.get("confidence_score"),
+        "transcript": transcript_text,
+        "last_3_lines": "\n".join(
+            [f"{t.get('speaker', 'User')}: {t.get('text', '')}" for t in raw_turns[-3:]]
+        ),
+        "user_context": snapshot.get("userContext", ""),
+        "date_context": snapshot.get("dateContext", ""),
+        "boundary_guidelines": snapshot.get("boundaryGuidelines", ""),
     }
