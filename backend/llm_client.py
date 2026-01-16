@@ -1,14 +1,47 @@
+import logging
 import os
 from typing import Any, Dict
 
 import httpx
+from urllib.parse import urlencode, urlparse, urlunparse, parse_qs
 
 
-PROMPT_TEMPLATE = """You are a friendly conversation coach for a dating app in HINGLISH (hindi and english mixed).
-Generate ONE short conversational suggestion to reduce awkwardness.
+def _is_gemini_api(api_url: str) -> bool:
+    return "generativelanguage.googleapis.com" in api_url
+
+
+def _with_api_key(api_url: str, api_key: str) -> str:
+    parsed = urlparse(api_url)
+    query = parse_qs(parsed.query)
+    if "key" not in query:
+        query["key"] = [api_key]
+    new_query = urlencode(query, doseq=True)
+    return urlunparse(parsed._replace(query=new_query))
+
+
+logger = logging.getLogger("llm")
+
+PROMPT_TEMPLATE = """You are a friendly conversation coach for a dating app in HINGLISH (hindi and english mixed). You are a adult dating person who is a huge flirt and a great conversationalist.
+Generate ONE short conversational suggestion to reduce awkwardness and make it more fun and hot or interesting as per the context.
+always answer in HINGLISH and assume its a first or second date.
+
+
+Your tone should be supportive, confident, fun, and positive — think: a confidant who helps the user feel charming and authentic, not cheesy or creepy.
+
+Based on context, you can lean more:
+
+Playful/flirty
+
+Romantic
+
+Deep/meaningful
+
+Funny/lighthearted
+
+Smooth/confident
 
 Guidelines:
-- Max 120 words
+- Max 80 words , under 10 sec , lower and to the point the better
 - Spoken, friendly, non-judgmental tone
 - Match detected language style (english, hindi, hinglish)
 - Avoid repeating recent topics
@@ -16,7 +49,8 @@ Guidelines:
 - If flirting, keep it playful , hot and raunchy
 - Avoid sensitive or personal advice
 - Avoid commands or moral judgments
-- Make a new topic to talk about that is fun and hot on dates 
+- Make a new topic to talk about that is fun and hot on dates and not creepy or too cheesy
+- No need to add explanation or signs like wink , smile etc , you just need to generate the suggestion and user will handle the rest 
 
 Signals:
 language: {language}
@@ -36,9 +70,10 @@ confidence_score: {confidence_score}
 async def generate_suggestion(context: Dict[str, Any]) -> str:
     api_url = os.getenv("LLM_API_URL", "").strip()
     api_key = os.getenv("LLM_API_KEY", "").strip()
-    model = os.getenv("LLM_MODEL", "gpt-4o-mini")
+    model = os.getenv("LLM_MODEL", "gemini-2.5-flash")
 
     if not api_url or not api_key:
+        logger.warning("LLM not configured")
         return ""
 
     prompt = PROMPT_TEMPLATE.format(
@@ -55,32 +90,63 @@ async def generate_suggestion(context: Dict[str, Any]) -> str:
         confidence_score=context.get("confidence_score"),
     )
 
-    payload = {
-        "model": model,
-        "messages": [
-            {"role": "system", "content": "You are a helpful assistant."},
-            {"role": "user", "content": prompt},
-        ],
-        "temperature": 0.7,
-        "max_tokens": 200,
-    }
-
-    headers = {"Authorization": f"Bearer {api_key}"}
+    if _is_gemini_api(api_url):
+        payload = {
+            "contents": [
+                {
+                    "parts": [{"text": prompt}],
+                }
+            ],
+            "generationConfig": {
+                "temperature": 0.7,
+                "maxOutputTokens": 200,
+            },
+        }
+        headers = {"Content-Type": "application/json"}
+        request_url = _with_api_key(api_url, api_key)
+    else:
+        payload = {
+            "model": model,
+            "messages": [
+                {"role": "system", "content": "You are a adult dating person who is a huge flirt and a great conversationalist."},
+                {"role": "user", "content": prompt},
+            ],
+            "temperature": 0.7,
+            "max_tokens": 80,
+        }
+        headers = {"Authorization": f"Bearer {api_key}"}
+        request_url = api_url
 
     try:
-        async with httpx.AsyncClient(timeout=1.2) as client:
-            response = await client.post(api_url, json=payload, headers=headers)
+        async with httpx.AsyncClient(timeout=8.0) as client:
+            response = await client.post(request_url, json=payload, headers=headers)
             response.raise_for_status()
             data = response.json()
     except Exception:
+        logger.exception("LLM request failed")
         return ""
 
-    return _extract_message(data)
+    logger.debug("LLM response received")
+    return _extract_message(data, api_url)
 
 
-def _extract_message(data: Dict[str, Any]) -> str:
+def _extract_message(data: Dict[str, Any], api_url: str) -> str:
+    if _is_gemini_api(api_url):
+        candidates = data.get("candidates") or []
+        if not candidates:
+            logger.warning("LLM response missing candidates")
+            return ""
+        content = candidates[0].get("content") or {}
+        parts = content.get("parts") or []
+        if not parts:
+            logger.warning("LLM response missing parts")
+            return ""
+        text = parts[0].get("text") or ""
+        return text.strip()
+
     choices = data.get("choices") or []
     if not choices:
+        logger.warning("LLM response missing choices")
         return ""
     message = choices[0].get("message") or {}
     content = message.get("content") or ""

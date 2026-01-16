@@ -1,9 +1,21 @@
+import logging
+import os
+
 from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
+from dotenv import load_dotenv
 
 from websocket import router as websocket_router
 from redis_store import init_redis, close_redis
 
+
+logging.basicConfig(
+    level=logging.INFO,
+    format="%(asctime)s %(levelname)s [%(name)s] %(message)s",
+)
+
+# Load .env if present so local runs pick up API keys
+load_dotenv()
 
 app = FastAPI(title="Echo AI Backend", version="0.1.0")
 
