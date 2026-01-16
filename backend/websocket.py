@@ -15,7 +15,7 @@ from tts_client import synthesize_speech
 router = APIRouter()
 
 COOLDOWN_SECONDS = 10
-SILENCE_TRIGGER_SECONDS = 4
+SILENCE_TRIGGER_SECONDS = 3
 CONFIDENCE_TRIGGER_MIN = 0.8
 
 
