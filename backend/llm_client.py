@@ -57,7 +57,9 @@ Language: {language}
 Conversation Health: {conversation_health}
 Confidence: {confidence_score}
 
-Your suggestion for what he should say/ask next:"""
+Your suggestion for what he should say/ask next: if he has apologized move on and telk about something else 
+give more priority to recent flow , like if last message was sorry assume apologize has been given etc, another example : if asked for joke , tell a joke . do it accordingly for all stuff 
+"""
 
 
 BOUNDARY_PROMPT_TEMPLATE = """You are a sophisticated Relationship Expert and Dating Coach.
